@@ -2,13 +2,14 @@
 #include <vector>
 #include <queue>
 #include <algorithm>
+#include <cstring>
 
 using namespace std;
 
 const int INF = 1e9;
 
 struct Edge {
-    int to, cap, flow, rev;
+    int to, cap, rev;
 };
 
 vector<vector<Edge>> adj;
@@ -16,8 +17,8 @@ vector<int> level;
 vector<int> ptr;
 
 void add_edge(int from, int to, int cap) {
-    adj[from].push_back({to, cap, 0, (int)adj[to].size()});
-    adj[to].push_back({from, cap, 0, (int)adj[from].size() - 1});
+    adj[from].push_back({to, cap, (int)adj[to].size()});
+    adj[to].push_back({from, cap, (int)adj[from].size() - 1});
 }
 
 bool bfs(int s, int t) {
@@ -29,7 +30,7 @@ bool bfs(int s, int t) {
         int v = q.front();
         q.pop();
         for (auto& edge : adj[v]) {
-            if (edge.cap - edge.flow > 0 && level[edge.to] == -1) {
+            if (edge.cap > 0 && level[edge.to] == -1) {
                 level[edge.to] = level[v] + 1;
                 q.push(edge.to);
             }
@@ -41,14 +42,14 @@ bool bfs(int s, int t) {
 int dfs(int v, int t, int pushed) {
     if (pushed == 0) return 0;
     if (v == t) return pushed;
-    for (int& cid = ptr[v]; cid < adj[v].size(); ++cid) {
+    for (int& cid = ptr[v]; cid < (int)adj[v].size(); ++cid) {
         auto& edge = adj[v][cid];
         int tr = edge.to;
-        if (level[v] + 1 != level[tr] || edge.cap - edge.flow == 0) continue;
-        int push = dfs(tr, t, min(pushed, edge.cap - edge.flow));
+        if (level[v] + 1 != level[tr] || edge.cap == 0) continue;
+        int push = dfs(tr, t, min(pushed, edge.cap));
         if (push == 0) continue;
-        edge.flow += push;
-        adj[tr][edge.rev].flow -= push;
+        edge.cap -= push;
+        adj[edge.to][edge.rev].cap += push;
         return push;
     }
     return 0;
@@ -56,11 +57,6 @@ int dfs(int v, int t, int pushed) {
 
 int dinic(int s, int t) {
     int flow = 0;
-    for (auto& row : adj) {
-        for (auto& edge : row) {
-            edge.flow = 0;
-        }
-    }
     while (bfs(s, t)) {
         fill(ptr.begin(), ptr.end(), 0);
         while (int pushed = dfs(s, t, INF)) {
@@ -75,13 +71,6 @@ struct GHEdge {
 };
 
 vector<vector<GHEdge>> gh_tree;
-void add_gh_edge(int u, int v, int w) {
-    gh_tree[u].push_back({v, w});
-    gh_tree[v].push_back({u, w});
-}
-
-long long total_max_flow = 0;
-int n_nodes;
 
 void get_all_pairs_flow(int u, int p, int min_w, vector<int>& dists) {
     for (auto& edge : gh_tree[u]) {
@@ -94,28 +83,37 @@ void get_all_pairs_flow(int u, int p, int min_w, vector<int>& dists) {
 }
 
 int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(NULL);
+
     int n, m;
     if (!(cin >> n >> m)) return 0;
-    n_nodes = n;
-    adj.assign(n + 1, vector<Edge>());
-    level.resize(n + 1);
-    ptr.resize(n + 1);
 
+    vector<pair<int, int>> original_edges;
+    original_edges.reserve(m);
     for (int i = 0; i < m; ++i) {
         int u, v;
         cin >> u >> v;
-        add_edge(u, v, 1);
+        original_edges.push_back({u, v});
     }
 
-    vector<int> parent(n + 1, 1);
+    adj.resize(n + 1);
+    level.resize(n + 1);
+    ptr.resize(n + 1);
+
+    vector<int> p(n + 1, 1);
     gh_tree.assign(n + 1, vector<GHEdge>());
 
     for (int i = 2; i <= n; ++i) {
         int s = i;
-        int t = parent[i];
-        int flow = dinic(s, t);
+        int t = p[i];
 
-        add_gh_edge(s, t, flow);
+        for (int j = 1; j <= n; ++j) adj[j].clear();
+        for (const auto& edge : original_edges) {
+            add_edge(edge.first, edge.second, 1);
+        }
+
+        int flow = dinic(s, t);
 
         vector<bool> in_cut(n + 1, false);
         queue<int> q;
@@ -125,7 +123,7 @@ int main() {
             int v = q.front();
             q.pop();
             for (auto& edge : adj[v]) {
-                if (edge.cap - edge.flow > 0 && !in_cut[edge.to]) {
+                if (edge.cap > 0 && !in_cut[edge.to]) {
                     in_cut[edge.to] = true;
                     q.push(edge.to);
                 }
@@ -133,10 +131,12 @@ int main() {
         }
 
         for (int j = i + 1; j <= n; ++j) {
-            if (parent[j] == t && in_cut[j]) {
-                parent[j] = s;
+            if (p[j] == t && in_cut[j]) {
+                p[j] = s;
             }
         }
+        gh_tree[s].push_back({t, flow});
+        gh_tree[t].push_back({s, flow});
     }
 
     long long sum_flow = 0;
@@ -144,7 +144,7 @@ int main() {
         vector<int> dists(n + 1, INF);
         get_all_pairs_flow(i, -1, INF, dists);
         for (int j = i + 1; j <= n; ++j) {
-            sum_flow += dists[j];
+            if (dists[j] != INF) sum_flow += dists[j];
         }
     }
 
