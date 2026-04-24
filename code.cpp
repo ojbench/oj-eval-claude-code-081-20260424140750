@@ -16,7 +16,12 @@ vector<vector<Edge>> adj;
 vector<int> level;
 vector<int> ptr;
 
-void add_edge(int from, int to, int cap) {
+struct RawEdge {
+    int u, v;
+};
+vector<RawEdge> raw_edges;
+
+inline void add_edge(int from, int to, int cap) {
     adj[from].push_back({to, cap, (int)adj[to].size()});
     adj[to].push_back({from, cap, (int)adj[from].size() - 1});
 }
@@ -24,12 +29,13 @@ void add_edge(int from, int to, int cap) {
 bool bfs(int s, int t) {
     fill(level.begin(), level.end(), -1);
     level[s] = 0;
-    queue<int> q;
+    static queue<int> q;
+    while(!q.empty()) q.pop();
     q.push(s);
     while (!q.empty()) {
         int v = q.front();
         q.pop();
-        for (auto& edge : adj[v]) {
+        for (const auto& edge : adj[v]) {
             if (edge.cap > 0 && level[edge.to] == -1) {
                 level[edge.to] = level[v] + 1;
                 q.push(edge.to);
@@ -40,8 +46,7 @@ bool bfs(int s, int t) {
 }
 
 int dfs(int v, int t, int pushed) {
-    if (pushed == 0) return 0;
-    if (v == t) return pushed;
+    if (pushed == 0 || v == t) return pushed;
     for (int& cid = ptr[v]; cid < (int)adj[v].size(); ++cid) {
         auto& edge = adj[v][cid];
         int tr = edge.to;
@@ -55,7 +60,12 @@ int dfs(int v, int t, int pushed) {
     return 0;
 }
 
-int dinic(int s, int t) {
+int dinic(int s, int t, int n) {
+    for (int i = 1; i <= n; ++i) adj[i].clear();
+    for (const auto& re : raw_edges) {
+        add_edge(re.u, re.v, 1);
+    }
+
     int flow = 0;
     while (bfs(s, t)) {
         fill(ptr.begin(), ptr.end(), 0);
@@ -69,15 +79,14 @@ int dinic(int s, int t) {
 struct GHEdge {
     int to, weight;
 };
-
 vector<vector<GHEdge>> gh_tree;
 
-void get_all_pairs_flow(int u, int p, int min_w, vector<int>& dists) {
-    for (auto& edge : gh_tree[u]) {
+void get_dists(int u, int p, int min_w, vector<int>& dists) {
+    for (const auto& edge : gh_tree[u]) {
         if (edge.to != p) {
             int current_min = min(min_w, edge.weight);
             dists[edge.to] = current_min;
-            get_all_pairs_flow(edge.to, u, current_min, dists);
+            get_dists(edge.to, u, current_min, dists);
         }
     }
 }
@@ -89,31 +98,23 @@ int main() {
     int n, m;
     if (!(cin >> n >> m)) return 0;
 
-    vector<pair<int, int>> original_edges;
-    original_edges.reserve(m);
+    raw_edges.reserve(m);
     for (int i = 0; i < m; ++i) {
         int u, v;
         cin >> u >> v;
-        original_edges.push_back({u, v});
+        raw_edges.push_back({u, v});
     }
 
     adj.resize(n + 1);
     level.resize(n + 1);
     ptr.resize(n + 1);
-
-    vector<int> p(n + 1, 1);
     gh_tree.assign(n + 1, vector<GHEdge>());
 
+    vector<int> p(n + 1, 1);
     for (int i = 2; i <= n; ++i) {
         int s = i;
         int t = p[i];
-
-        for (int j = 1; j <= n; ++j) adj[j].clear();
-        for (const auto& edge : original_edges) {
-            add_edge(edge.first, edge.second, 1);
-        }
-
-        int flow = dinic(s, t);
+        int flow = dinic(s, t, n);
 
         vector<bool> in_cut(n + 1, false);
         queue<int> q;
@@ -122,7 +123,7 @@ int main() {
         while (!q.empty()) {
             int v = q.front();
             q.pop();
-            for (auto& edge : adj[v]) {
+            for (const auto& edge : adj[v]) {
                 if (edge.cap > 0 && !in_cut[edge.to]) {
                     in_cut[edge.to] = true;
                     q.push(edge.to);
@@ -142,7 +143,7 @@ int main() {
     long long sum_flow = 0;
     for (int i = 1; i <= n; ++i) {
         vector<int> dists(n + 1, INF);
-        get_all_pairs_flow(i, -1, INF, dists);
+        get_dists(i, -1, INF, dists);
         for (int j = i + 1; j <= n; ++j) {
             if (dists[j] != INF) sum_flow += dists[j];
         }
